@@ -1,0 +1,297 @@
+From 25006a755acaf46f8ebd7ba9721558a55f984cb7 Mon Sep 17 00:00:00 2001
+From: BenW0 <benweiss@uw.edu>
+Date: Mon, 14 Sep 2015 10:47:39 -0700
+Subject: [PATCH] 3 button interface changes.
+
+---
+ Marlin/Configuration.h    |  9 ++++---
+ Marlin/Makefile           |  2 +-
+ Marlin/Marlin_main.cpp    | 19 ++++++++++++++
+ Marlin/SimpleDlpPanel.cpp | 67 +++++++++++++++++++++++++++++++++++++++++++++++
+ Marlin/SimpleDlpPanel.h   | 30 +++++++++++++++++++++
+ Marlin/pins.h             |  9 +++++++
+ Marlin/ultralcd.h         | 23 +++++++++-------
+ README.md                 | 21 ++++++++++++++-
+ 8 files changed, 166 insertions(+), 14 deletions(-)
+ create mode 100644 Marlin/SimpleDlpPanel.cpp
+ create mode 100644 Marlin/SimpleDlpPanel.h
+
+diff --git a/Marlin/Configuration.h b/Marlin/Configuration.h
+index 4f17736..0b52141 100644
+--- a/Marlin/Configuration.h
++++ b/Marlin/Configuration.h
+@@ -44,7 +44,7 @@
+ // The following define selects which electronics board you have.
+ // Please choose the name from boards.h that matches your setup
+ #ifndef MOTHERBOARD
+-  #define MOTHERBOARD BOARD_ULTIMAKER
++  #define MOTHERBOARD BOARD_PRINTRBOARD
+ #endif
+ 
+ // Define this to set a custom name for your generic Mendel,
+@@ -104,8 +104,8 @@
+ // 147 is Pt100 with 4k7 pullup
+ // 110 is Pt100 with 1k pullup (non standard)
+ 
+-#define TEMP_SENSOR_0 -1
+-#define TEMP_SENSOR_1 -1
++#define TEMP_SENSOR_0 0
++#define TEMP_SENSOR_1 0
+ #define TEMP_SENSOR_2 0
+ #define TEMP_SENSOR_BED 0
+ 
+@@ -530,6 +530,9 @@ const bool Z_MAX_ENDSTOP_INVERTING = true; // set to true to invert the logic of
+ #define ABS_PREHEAT_HPB_TEMP 100
+ #define ABS_PREHEAT_FAN_SPEED 255   // Insert Value between 0 and 255
+ 
++// Ben's Simple Front Panel Buttons for DLP Printers
++#define SIMPLE_DLP_PANEL
++
+ //LCD and SD support
+ //#define ULTRA_LCD  //general LCD support, also 16x2
+ //#define DOGLCD  // Support for SPI LCD 128x64 (Controller ST7565R graphic Display Family)
+diff --git a/Marlin/Makefile b/Marlin/Makefile
+index 4cc9de1..fc786bf 100644
+--- a/Marlin/Makefile
++++ b/Marlin/Makefile
+@@ -266,7 +266,7 @@ CXXSRC = WMath.cpp WString.cpp Print.cpp Marlin_main.cpp	\
+ 	SdFile.cpp SdVolume.cpp motion_control.cpp planner.cpp		\
+ 	stepper.cpp temperature.cpp cardreader.cpp ConfigurationStore.cpp \
+ 	watchdog.cpp SPI.cpp Servo.cpp Tone.cpp ultralcd.cpp digipot_mcp4451.cpp \
+-	vector_3.cpp qr_solve.cpp
++	vector_3.cpp qr_solve.cpp SimpleDlpPanel.cpp
+ ifeq ($(LIQUID_TWI2), 0)
+ CXXSRC += LiquidCrystal.cpp
+ else
+diff --git a/Marlin/Marlin_main.cpp b/Marlin/Marlin_main.cpp
+index affb9ed..98ff6d5 100644
+--- a/Marlin/Marlin_main.cpp
++++ b/Marlin/Marlin_main.cpp
+@@ -26,6 +26,25 @@
+  It has preliminary support for Matthew Roberts advance algorithm
+     http://reprap.org/pipermail/reprap-dev/2011-May/003323.html
+  */
++ 
++ /*
++ This is Marlin (1.0.2-1, August 2015), modified to work with a simple, 3-button panel for DLP projectors.
++
++	The three-button interface lets you move the stage up and down and home without
++	touching the computer. To use it with the Printrboard, wire the following pins to ground via a normally open switch:
++	* Up: Pin 33 = PE1 = Pin 11 on EXP2
++	* Down: Pin 28 = PD4 = Pin 5 on EXP2
++	* Home: Pin 30 = PD6 = Pin 7 on EXP2
++	Note that Pin 14 of EXP1 is Ground. "Pin 1" on EXP1 is towards the outer edge of the board, on the end closest to the end stops.
++
++	To adapt this for other printers, add these constants to another board in pins.h:
++	#ifdef SIMPLE_DLP_PANEL
++		#define SIMPLE_DLP_PANEL_UP_PIN     ___
++		#define SIMPLE_DLP_PANEL_DOWN_PIN   ___
++		#define SIMPLE_DLP_PANEL_HOME_PIN   ___
++	#endif //SIMPLE_DLP_PANEL
++	filling ___ in with the appropriate pin numbers.
++*/
+ 
+ #include "Marlin.h"
+ 
+diff --git a/Marlin/SimpleDlpPanel.cpp b/Marlin/SimpleDlpPanel.cpp
+new file mode 100644
+index 0000000..5283572
+--- /dev/null
++++ b/Marlin/SimpleDlpPanel.cpp
+@@ -0,0 +1,67 @@
++#include "SimpleDlpPanel.h"
++
++#ifdef SIMPLE_DLP_PANEL
++#include "Marlin.h"
++#include "planner.h"
++#include "pins.h"
++
++static int homedelay = 0;     // counts up to SIMPLE_DLP_HOME_DELAY before accessing home.
++
++/** LCD API **/
++void lcd_init()
++{
++  SERIAL_ECHOLN("Got to Init");
++  // Configure the I/O - all buttons are inputs with pullups.
++  SET_INPUT(SIMPLE_DLP_PANEL_UP_PIN);
++  SET_INPUT(SIMPLE_DLP_PANEL_DOWN_PIN);
++  SET_INPUT(SIMPLE_DLP_PANEL_HOME_PIN);
++  WRITE(SIMPLE_DLP_PANEL_UP_PIN,HIGH);
++  WRITE(SIMPLE_DLP_PANEL_DOWN_PIN,HIGH);
++  WRITE(SIMPLE_DLP_PANEL_HOME_PIN, HIGH);
++
++}
++
++void lcd_update()
++{
++  bool found = false;
++  // Check - are any moves queued?
++  if (movesplanned() == 0)
++  {
++    // Check for depressed buttons
++    if (READ(SIMPLE_DLP_PANEL_UP_PIN) == 0)// && (pin_state & 0x1))
++    {
++      current_position[Z_AXIS] += SIMPLE_DLP_MOVE_DIST;
++      SERIAL_ECHOLN("Up!");
++      found = true;
++    }
++    if (READ(SIMPLE_DLP_PANEL_DOWN_PIN) == 0)// && (pin_state & 0x2))
++    {
++      current_position[Z_AXIS] -= SIMPLE_DLP_MOVE_DIST;
++      //SERIAL_ECHOLN("Down!");
++      found = true;
++    }
++    
++    // execute the move, if a move was found
++    if (found)
++    {
++      if (min_software_endstops && current_position[Z_AXIS] < Z_MIN_POS) current_position[Z_AXIS] = Z_MIN_POS;
++      if (max_software_endstops && current_position[Z_AXIS] > Z_MAX_POS) current_position[Z_AXIS] = Z_MAX_POS;
++      
++      plan_buffer_line(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS], homing_feedrate[Z_AXIS], active_extruder);
++    }
++    else if (READ(SIMPLE_DLP_PANEL_HOME_PIN) == 0)
++    {
++      if (homedelay++ > SIMPLE_DLP_HOME_DELAY)
++      {
++        //SERIAL_ECHOLN("HOME!");
++        // Check for Home button pressed
++        // enque the home Z command:
++        enquecommand_P(PSTR("G28 Z0"));
++        homedelay = 0;
++      }
++    }
++    else
++      homedelay = 0;
++  }
++}  
++#endif // SIMPLE_DLP_PANEL
+\ No newline at end of file
+diff --git a/Marlin/SimpleDlpPanel.h b/Marlin/SimpleDlpPanel.h
+new file mode 100644
+index 0000000..b638551
+--- /dev/null
++++ b/Marlin/SimpleDlpPanel.h
+@@ -0,0 +1,30 @@
++// Very, very simple panel implementation for DLP printer.
++// Ben W - 9/2015
++
++#ifndef _SIMPLE_DLP_PANEL_H
++#define _SIMPLE_DLP_PANEL_H
++
++#include "Marlin.h"
++
++#ifdef SIMPLE_DLP_PANEL
++  #define SIMPLE_DLP_MOVE_DIST 0.1f		// mm to move with each button press.
++  #define SIMPLE_DLP_HOME_DELAY 10000  // updates for which the button needs to be held down before homing begins. This prevents accidental homing.
++
++  void lcd_update();
++  void lcd_init();
++  FORCE_INLINE void lcd_setstatus(const char* message) {}
++  FORCE_INLINE void lcd_setstatuspgm(const char* message) {}
++  FORCE_INLINE void lcd_setalertstatuspgm(const char* message) {}
++  FORCE_INLINE void lcd_reset_alert_level() {}
++  FORCE_INLINE bool lcd_detected(void) {return true;}
++
++  FORCE_INLINE void lcd_buttons_update() {}
++
++  FORCE_INLINE void lcd_buzz(long duration,uint16_t freq) {}
++
++  #define LCD_MESSAGEPGM(x) 
++  #define LCD_ALERTMESSAGEPGM(x) 
++
++#endif //SIMPLE_DLP_PANEL
++
++#endif //_SIMPLE_DLP_PANEL_H
+\ No newline at end of file
+diff --git a/Marlin/pins.h b/Marlin/pins.h
+index 3bd6cb3..f309d2e 100644
+--- a/Marlin/pins.h
++++ b/Marlin/pins.h
+@@ -1794,6 +1794,15 @@
+   #define MOSI_PIN         10
+ #endif
+ 
++// Pins for Ben's simple front panel for DLP printers
++// Right now, these are only defined for Printrboard; if you want them for other platforms,
++// add them yourself!
++#ifdef SIMPLE_DLP_PANEL
++	#define SIMPLE_DLP_PANEL_UP_PIN     33    // PE1
++	#define SIMPLE_DLP_PANEL_DOWN_PIN   28    // PD4
++	#define SIMPLE_DLP_PANEL_HOME_PIN   30    // PD6
++#endif
++
+ #endif // TEENSYLU || PRINTRBOARD
+ 
+ /****************************************************************************************
+diff --git a/Marlin/ultralcd.h b/Marlin/ultralcd.h
+index a175f4a..9fcdbe5 100644
+--- a/Marlin/ultralcd.h
++++ b/Marlin/ultralcd.h
+@@ -95,16 +95,21 @@
+   #endif//NEWPANEL
+ 
+ #else //no LCD
+-  FORCE_INLINE void lcd_update() {}
+-  FORCE_INLINE void lcd_init() {}
+-  FORCE_INLINE void lcd_setstatus(const char* message) {}
+-  FORCE_INLINE void lcd_buttons_update() {}
+-  FORCE_INLINE void lcd_reset_alert_level() {}
+-  FORCE_INLINE void lcd_buzz(long duration,uint16_t freq) {}
+-  FORCE_INLINE bool lcd_detected(void) { return true; }
+ 
+-  #define LCD_MESSAGEPGM(x) 
+-  #define LCD_ALERTMESSAGEPGM(x) 
++  #ifdef SIMPLE_DLP_PANEL	// these will be set in SimpleDlpPanel.h
++    #include "SimpleDlpPanel.h"
++  #else
++	  FORCE_INLINE void lcd_update() {}
++	  FORCE_INLINE void lcd_init() {}
++	  FORCE_INLINE void lcd_setstatus(const char* message) {}
++	  FORCE_INLINE void lcd_buttons_update() {}
++	  FORCE_INLINE void lcd_reset_alert_level() {}
++	  FORCE_INLINE void lcd_buzz(long duration,uint16_t freq) {}
++	  FORCE_INLINE bool lcd_detected(void) { return true; }
++
++	  #define LCD_MESSAGEPGM(x) 
++	  #define LCD_ALERTMESSAGEPGM(x) 
++  #endif
+ 
+ #endif //ULTRA_LCD
+ 
+diff --git a/README.md b/README.md
+index d46a8e5..0183a6b 100644
+--- a/README.md
++++ b/README.md
+@@ -1,8 +1,27 @@
+-# Marlin 3D Printer Firmware
++# Marlin 3D Printer Firmware with Simple DLP Panel
+ <img align="right" src="Documentation/Logo/Marlin%20Logo%20GitHub.png" />
+ 
+  Documentation has moved to [marlinfirmware.org](http://www.marlinfirmware.org).
+ 
++This is Marlin (1.0.2-1, August 2015), modified to work with a simple, 3-button panel for DLP projectors.
++ 
++Additionally, the printer motherboard is set to Printrboard (which is the only motherboard currently supported -- see below), and both thermistors have been disabled.
++
++The three-button interface lets you move the stage up and down and home without
++touching the computer. To use it with the Printrboard, wire the following pins to ground via a normally open switch:
++* Up: Pin 33 = PE1 = Pin 11 on EXP2
++* Down: Pin 28 = PD4 = Pin 5 on EXP2
++* Home: Pin 30 = PD6 = Pin 7 on EXP2
++Note that Pin 14 of EXP1 is Ground. "Pin 1" on EXP1 is towards the outer edge of the board, on the end closest to the end stops.
++
++To adapt this for other printers, add these constants to your board in pins.h:
++ #ifdef SIMPLE_DLP_PANEL
++	 #define SIMPLE_DLP_PANEL_UP_PIN     ___
++	 #define SIMPLE_DLP_PANEL_DOWN_PIN   ___
++	 #define SIMPLE_DLP_PANEL_HOME_PIN   ___
++ #endif //SIMPLE_DLP_PANEL
++filling ___ in with the appropriate pin numbers.
++ 
+ ## Release Branch
+ 
+ The Release branch contains the latest tagged version of Marlin (currently 1.0.2-1 – January 2015). It also includes a version 1.0.1 (December 2014). Any version of Marlin before 1.0.1 (when we started tagging versions) can be collectively referred to as Marlin 1.0.0.
+-- 
+1.8.4.msysgit.0
+
