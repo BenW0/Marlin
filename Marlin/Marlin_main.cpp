@@ -26,6 +26,25 @@
  It has preliminary support for Matthew Roberts advance algorithm
     http://reprap.org/pipermail/reprap-dev/2011-May/003323.html
  */
+ 
+ /*
+ This is Marlin (1.0.2-1, August 2015), modified to work with a simple, 3-button panel for DLP projectors.
+
+	The three-button interface lets you move the stage up and down and home without
+	touching the computer. To use it with the Printrboard, wire the following pins to ground via a normally open switch:
+	* Up: Pin 33 = PE1 = Pin 11 on EXP2
+	* Down: Pin 28 = PD4 = Pin 5 on EXP2
+	* Home: Pin 30 = PD6 = Pin 7 on EXP2
+	Note that Pin 14 of EXP1 is Ground. "Pin 1" on EXP1 is towards the outer edge of the board, on the end closest to the end stops.
+
+	To adapt this for other printers, add these constants to another board in pins.h:
+	#ifdef SIMPLE_DLP_PANEL
+		#define SIMPLE_DLP_PANEL_UP_PIN     ___
+		#define SIMPLE_DLP_PANEL_DOWN_PIN   ___
+		#define SIMPLE_DLP_PANEL_HOME_PIN   ___
+	#endif //SIMPLE_DLP_PANEL
+	filling ___ in with the appropriate pin numbers.
+*/
 
 #include "Marlin.h"
 

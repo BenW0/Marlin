@@ -95,16 +95,21 @@
   #endif//NEWPANEL
 
 #else //no LCD
-  FORCE_INLINE void lcd_update() {}
-  FORCE_INLINE void lcd_init() {}
-  FORCE_INLINE void lcd_setstatus(const char* message) {}
-  FORCE_INLINE void lcd_buttons_update() {}
-  FORCE_INLINE void lcd_reset_alert_level() {}
-  FORCE_INLINE void lcd_buzz(long duration,uint16_t freq) {}
-  FORCE_INLINE bool lcd_detected(void) { return true; }
 
-  #define LCD_MESSAGEPGM(x) 
-  #define LCD_ALERTMESSAGEPGM(x) 
+  #ifdef SIMPLE_DLP_PANEL	// these will be set in SimpleDlpPanel.h
+    #include "SimpleDlpPanel.h"
+  #else
+	  FORCE_INLINE void lcd_update() {}
+	  FORCE_INLINE void lcd_init() {}
+	  FORCE_INLINE void lcd_setstatus(const char* message) {}
+	  FORCE_INLINE void lcd_buttons_update() {}
+	  FORCE_INLINE void lcd_reset_alert_level() {}
+	  FORCE_INLINE void lcd_buzz(long duration,uint16_t freq) {}
+	  FORCE_INLINE bool lcd_detected(void) { return true; }
+
+	  #define LCD_MESSAGEPGM(x) 
+	  #define LCD_ALERTMESSAGEPGM(x) 
+  #endif
 
 #endif //ULTRA_LCD
 

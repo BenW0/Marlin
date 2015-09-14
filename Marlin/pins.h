@@ -1794,6 +1794,15 @@
   #define MOSI_PIN         10
 #endif
 
+// Pins for Ben's simple front panel for DLP printers
+// Right now, these are only defined for Printrboard; if you want them for other platforms,
+// add them yourself!
+#ifdef SIMPLE_DLP_PANEL
+	#define SIMPLE_DLP_PANEL_UP_PIN     33    // PE1
+	#define SIMPLE_DLP_PANEL_DOWN_PIN   28    // PD4
+	#define SIMPLE_DLP_PANEL_HOME_PIN   30    // PD6
+#endif
+
 #endif // TEENSYLU || PRINTRBOARD
 
 /****************************************************************************************
