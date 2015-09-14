@@ -15,12 +15,14 @@ touching the computer. To use it with the Printrboard, wire the following pins t
 Note that Pin 14 of EXP1 is Ground. "Pin 1" on EXP1 is towards the outer edge of the board, on the end closest to the end stops.
 
 To adapt this for other printers, add these constants to your board in pins.h:
- #ifdef SIMPLE_DLP_PANEL
-	 #define SIMPLE_DLP_PANEL_UP_PIN     ___
-	 #define SIMPLE_DLP_PANEL_DOWN_PIN   ___
-	 #define SIMPLE_DLP_PANEL_HOME_PIN   ___
- #endif //SIMPLE_DLP_PANEL
+    #ifdef SIMPLE_DLP_PANEL
+	    #define SIMPLE_DLP_PANEL_UP_PIN     ___
+	    #define SIMPLE_DLP_PANEL_DOWN_PIN   ___
+	    #define SIMPLE_DLP_PANEL_HOME_PIN   ___
+    #endif //SIMPLE_DLP_PANEL
 filling ___ in with the appropriate pin numbers.
+
+Additionally, a patch file for these changes is also provided, if you want to patch a different version of Marlin. The changes are designed to be as non-invasive as possible and should (hopefully) continue to be compatible with future releases of Marlin with minimal changes.
  
 ## Release Branch
 
